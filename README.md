@@ -22,7 +22,7 @@ AgentForge/
 
 ### 环境要求
 
-- Python ≥ 3.13
+- Python ≥ 3.12
 - Node.js（前端）
 - PostgreSQL（`agentforge` 向量库 + `agentforge_meta` 元数据库）
 - Redis（可选缓存）
