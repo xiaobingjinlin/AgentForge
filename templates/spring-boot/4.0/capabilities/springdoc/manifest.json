@@ -1,0 +1,22 @@
+{
+  "id": "springdoc",
+  "name": "SpringDoc OpenAPI",
+  "description": "Swagger UI + OpenAPI 3 文档（最小可运行）",
+  "framework_version": "4.0",
+  "requires": ["base"],
+  "conflicts": [],
+  "pom": {
+    "dependencies": [
+      {
+        "groupId": "org.springdoc",
+        "artifactId": "springdoc-openapi-starter-webmvc-ui",
+        "version": "2.8.6"
+      }
+    ]
+  },
+  "application_yml": "springdoc:\n  api-docs:\n    path: /v3/api-docs\n  swagger-ui:\n    path: /swagger-ui.html\n",
+  "keywords": ["springdoc", "swagger", "openapi", "接口文档", "api文档"],
+  "verify": {
+    "command": "mvn -q -DskipTests compile"
+  }
+}
