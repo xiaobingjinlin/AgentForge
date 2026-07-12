@@ -9,12 +9,16 @@ from loguru import logger
 
 from agentforge.agents.capability_router import CapabilityRouter
 from agentforge.agents.graph import run_agent_pipeline
-from agentforge.agents.integrator import IntegratorAgent
+from agentforge.agents.handoff import DomainResult, build_brief_codegen_summary
+from agentforge.core.constants import MAX_VERIFY_REPAIR_ROUNDS
+from agentforge.core.jdk import probe_java_version
+from agentforge.plugins.entity_resolver import resolve_entity_name
 from agentforge.db.meta_store import MetaStore
 from agentforge.sandbox.manager import SandboxManager
 from agentforge.services.project_service import ProjectService
 from agentforge.templates.capability_policy import CapabilityPolicy
-from agentforge.utils.llm_util import LLMUtil
+from agentforge.utils.maven_output import display_maven_message
+from agentforge.utils.llm_util import CHAT_MODELS, LLMUtil
 
 
 class StreamEvent(TypedDict):
@@ -34,9 +38,8 @@ class AgentOrchestrator:
     ) -> None:
         self.meta = meta_store or MetaStore()
         self.llm = llm or LLMUtil()
-        self.projects = project_service or ProjectService(meta_store=self.meta)
+        self.projects = project_service or ProjectService(meta=self.meta)
         self.capability_router = capability_router or CapabilityRouter()
-        self.integrator = IntegratorAgent(self.llm)
         self.sandbox = SandboxManager()
 
     def stream(self, session_id: str, message: str) -> Iterator[StreamEvent]:
@@ -230,6 +233,44 @@ class AgentOrchestrator:
             )
             return
 
+        if self.capability_router.is_casual_chat(message):
+            yield StreamEvent(
+                type="status",
+                data={
+                    "stage": "chat",
+                    "message": "日常对话",
+                    "template_stack": template_stack,
+                },
+            )
+            system = self.capability_router.build_casual_system_prompt(
+                framework_version=framework_version,
+                template_stack=template_stack,
+            )
+            try:
+                for token in self.llm.stream_chat(
+                    CHAT_MODELS["router"],
+                    message,
+                    system=system,
+                    max_tokens=1024,
+                ):
+                    yield StreamEvent(type="token", data={"content": token})
+            except Exception as exc:
+                log.exception("日常对话失败")
+                yield StreamEvent(type="error", data={"message": str(exc)})
+                return
+
+            yield StreamEvent(
+                type="done",
+                data={
+                    "domains": [],
+                    "sandbox_files": self.sandbox.list_files(project_id),
+                    "framework_version": framework_version,
+                    "template_stack": template_stack,
+                    "chat_only": True,
+                },
+            )
+            return
+
         yield StreamEvent(
             type="status",
             data={
@@ -237,6 +278,18 @@ class AgentOrchestrator:
                 "message": "路由 Agent 分析任务...",
                 "framework_version": framework_version,
                 "template_stack": template_stack,
+            },
+        )
+
+        entity_resolution = resolve_entity_name(message, llm=self.llm, use_llm=True)
+        yield StreamEvent(
+            type="entity_resolved",
+            data={
+                "english_name": entity_resolution.english_name,
+                "source_phrase": entity_resolution.source_phrase,
+                "display_label": entity_resolution.display_label,
+                "method": entity_resolution.method,
+                "message": f"业务实体命名：{entity_resolution.display_label}",
             },
         )
 
@@ -296,16 +349,60 @@ class AgentOrchestrator:
         if files:
             self.meta.save_project_structure(project_id, files)
 
-        yield StreamEvent(type="status", data={"stage": "integrating", "message": "整合 Agent 生成最终方案..."})
+        verify_result = None
+        if results:
+            yield StreamEvent(
+                type="status",
+                data={"stage": "verifying", "message": "整体验证沙盒工程..."},
+            )
+            from agentforge.sandbox.project_verifier import ProjectVerifier
 
-        try:
-            token_stream = self.integrator.stream(message, domains, results)
-            for token in token_stream:
-                yield StreamEvent(type="token", data={"content": token})
-        except Exception as exc:
-            log.exception("整合流式输出失败")
-            yield StreamEvent(type="error", data={"message": str(exc)})
-            return
+            verify_result, results = ProjectVerifier(self.sandbox).verify_and_repair(
+                project_id,
+                results,
+                llm=self.llm,
+                user_message=message,
+                max_repair_rounds=MAX_VERIFY_REPAIR_ROUNDS,
+            )
+            for result in results:
+                if result.file_path in (verify_result.repaired_files or []):
+                    self._persist_domain_result(session_id, project_id, result)
+            yield StreamEvent(
+                type="project_verified",
+                data={
+                    "ok": verify_result.ok,
+                    "compile_skipped": verify_result.compile_skipped,
+                    "static_issues": [
+                        {"path": item.path, "issues": item.issues}
+                        for item in verify_result.static_issues
+                    ],
+                    "compile_message": display_maven_message(
+                        verify_result.compile_message,
+                        max_chars=500,
+                    ),
+                    "repaired_files": verify_result.repaired_files,
+                    "repair_rounds": verify_result.repair_rounds,
+                    "stuck": verify_result.stuck,
+                    "stopped_reason": verify_result.stopped_reason[:300],
+                    "java_version": probe_java_version(),
+                },
+            )
+            files = self.sandbox.list_files(project_id)
+            if files:
+                self.meta.save_project_structure(project_id, files)
+
+        yield StreamEvent(type="status", data={"stage": "integrating", "message": "生成完成摘要..."})
+
+        meta_entity = (state.get("metadata") or {}).get("entity_resolution") or {}
+        entity_label = meta_entity.get("display_label") or entity_resolution.display_label
+
+        summary = build_brief_codegen_summary(
+            results,
+            template_stack=template_stack,
+            verify=verify_result,
+            entity_label=entity_label,
+        )
+        yield StreamEvent(type="token", data={"content": summary})
 
         yield StreamEvent(
             type="done",
@@ -316,6 +413,9 @@ class AgentOrchestrator:
                 "template_stack": template_stack,
                 "capabilities_enabled": [r.get("capability_id") for r in enabled_results],
                 "capabilities_generated": [r.get("capability_id") for r in generated_results],
+                "verify_ok": verify_result.ok if verify_result else None,
+                "entity_name": entity_resolution.english_name,
+                "entity_label": entity_resolution.display_label,
             },
         )
 

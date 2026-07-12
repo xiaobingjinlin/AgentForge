@@ -33,6 +33,11 @@ def main() -> None:
             raise RuntimeError(f"实体名推断错误: {entity}")
         print(f"✓ 实体名推断: Order")
 
+        purchase = guess_entity_name("生成采购系统 Mapper Service Controller")
+        if purchase != "Purchase":
+            raise RuntimeError(f"采购系统实体名错误: {purchase}")
+        print(f"✓ 实体名推断: 采购系统 → {purchase}")
+
         ordered = sort_domains(["controller", "entity", "service", "mapper"])
         if ordered != ["entity", "mapper", "service", "controller"]:
             raise RuntimeError(f"执行顺序错误: {ordered}")

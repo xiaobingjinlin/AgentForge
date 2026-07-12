@@ -7,6 +7,7 @@ import re
 
 from loguru import logger
 
+from agentforge.plugins.entity_resolver import resolve_entity_name
 from agentforge.plugins import get_framework
 from agentforge.plugins.base import HandoffPacket
 from agentforge.utils.llm_util import CHAT_MODELS, LLMUtil
@@ -27,12 +28,24 @@ class RouterAgent:
         use_llm: bool = True,
     ) -> tuple[list[str], list[HandoffPacket], str]:
         plugin = get_framework(tech_stack)
-        plugin = get_framework(tech_stack)
         domains = self._route_domains(user_message, plugin, use_llm=use_llm)
-        handoffs = [plugin.build_handoff(d, user_message) for d in domains]
+        entity_resolution = resolve_entity_name(
+            user_message,
+            llm=self.llm if use_llm else None,
+            use_llm=use_llm,
+        )
+        handoffs = [
+            plugin.build_handoff(d, user_message, entity_resolution=entity_resolution)
+            for d in domains
+        ]
         system_prompt = plugin.system_prompt(framework_version)
-        logger.info("路由结果: domains={}", domains)
-        return domains, handoffs, system_prompt
+        logger.info(
+            "路由结果: domains={} entity={} ({})",
+            domains,
+            entity_resolution.english_name,
+            entity_resolution.display_label,
+        )
+        return domains, handoffs, system_prompt, entity_resolution
 
     def _route_domains(
         self,

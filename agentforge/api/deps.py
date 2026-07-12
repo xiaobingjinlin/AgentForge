@@ -24,7 +24,7 @@ def get_redis_store() -> RedisStore:
 
 @lru_cache
 def get_project_service() -> ProjectService:
-    return ProjectService(meta_store=get_meta_store())
+    return ProjectService(meta=get_meta_store())
 
 
 @lru_cache

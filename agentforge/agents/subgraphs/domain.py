@@ -9,6 +9,7 @@ from langgraph.graph import END, START, StateGraph
 from loguru import logger
 
 from agentforge.agents.codegen.pipeline import PhasedCodegenPipeline
+from agentforge.agents.codegen.limits import strip_code_fences
 from agentforge.agents.domains.spring_boot import get_domain_agent
 from agentforge.agents.handoff import DomainResult
 from agentforge.plugins.base import HandoffPacket
@@ -46,7 +47,19 @@ def _prepare_context_node(state: DomainState) -> DomainState:
         domain=domain,
         framework_version=framework_version,
     )
-    return {"rag_context": retriever.format_context(chunks)}
+    rag_context = retriever.format_context(chunks)
+
+    from agentforge.rag.codegen_error_memory import CodegenErrorMemory
+
+    error_lessons = CodegenErrorMemory(llm=llm).retrieve_for_codegen(
+        f"{handoff.task_summary} {domain} Java codegen",
+        codegen_domain=domain,
+        framework_version=framework_version,
+    )
+    if error_lessons:
+        rag_context = f"{error_lessons}\n\n{rag_context}"
+
+    return {"rag_context": rag_context}
 
 
 def _codegen_node(state: DomainState) -> DomainState:
@@ -122,7 +135,7 @@ def run_domain_subgraph(
     })
 
     file_path = result_state.get("file_path", agent.target_file(handoff))
-    code = result_state.get("code", "")
+    code = strip_code_fences(result_state.get("code", ""))
 
     if write_sandbox and project_id and code and not dry_run:
         from agentforge.sandbox.manager import SandboxManager

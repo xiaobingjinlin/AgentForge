@@ -10,6 +10,8 @@ from pathlib import Path
 
 from loguru import logger
 
+from agentforge.core.jdk import command_env_for_build, needs_build_env, probe_java_version
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SANDBOX_ROOT = PROJECT_ROOT / "sandbox"
 
@@ -107,7 +109,15 @@ class SandboxManager:
 
         cwd = self.project_dir(project_id)
         cwd.mkdir(parents=True, exist_ok=True)
-        logger.bind(project_id=project_id).info("执行命令: {}", cmd)
+        env = command_env_for_build() if needs_build_env(cmd) else None
+        if env and env.get("JAVA_HOME"):
+            logger.bind(project_id=project_id).info(
+                "执行命令: {} (JAVA_HOME={})",
+                cmd,
+                env["JAVA_HOME"],
+            )
+        else:
+            logger.bind(project_id=project_id).info("执行命令: {}", cmd)
 
         completed = subprocess.run(
             cmd,
@@ -116,6 +126,7 @@ class SandboxManager:
             capture_output=True,
             text=True,
             timeout=timeout,
+            env=env,
         )
         return {
             "command": cmd,

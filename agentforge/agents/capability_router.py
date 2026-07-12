@@ -208,6 +208,30 @@ class CapabilityRouter:
                 matched.append(cap_id)
         return matched
 
+    @staticmethod
+    def is_casual_chat(message: str) -> bool:
+        """日常寒暄 / 一般咨询：无能力叠加、无代码生成意图。"""
+        text = message.strip()
+        if not text:
+            return True
+        if CapabilityRouter._has_enable_intent(text):
+            return False
+        if CapabilityRouter.has_codegen_intent(text):
+            return False
+        return True
+
+    @staticmethod
+    def build_casual_system_prompt(*, framework_version: str, template_stack: list[str]) -> str:
+        stack = " + ".join(template_stack) if template_stack else "base"
+        return (
+            f"你是 AgentForge 编程助手，帮助用户通过对话搭建 Spring Boot {framework_version} 后端项目。"
+            f"当前项目能力栈：{stack}。"
+            "请用简洁友好的中文回复。"
+            "这是日常对话或一般咨询，不要生成代码、不要编造文件路径，"
+            "可简要介绍你能做什么（叠加能力层、生成 CRUD 模块等）。"
+            "若用户后续提出具体开发需求，再引导其描述模块名与技术要求。"
+        )
+
     def is_capability_only(
         self,
         message: str,
@@ -226,7 +250,7 @@ class CapabilityRouter:
             return True
         if re.search(r"(\w+)\s*模块", message, re.IGNORECASE):
             return True
-        if re.search(r"(\w+)(Controller|Service|Mapper|Entity)", message, re.IGNORECASE):
+        if re.search(r"([A-Za-z][A-Za-z0-9]*)(Controller|Service|Mapper|Entity)", message, re.IGNORECASE):
             return True
 
         skip_contexts = ("接口文档", "api文档", "api 文档", "swagger", "openapi", "springdoc")

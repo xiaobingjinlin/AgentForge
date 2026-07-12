@@ -21,6 +21,7 @@ const streaming = ref(false);
 const statusText = ref("初始化中...");
 const errorText = ref("");
 const templateStack = ref<string[]>(["base"]);
+const exportHint = ref("");
 const listRef = ref<HTMLElement | null>(null);
 
 async function scrollToBottom() {
@@ -141,14 +142,16 @@ onMounted(() => {
 
 <template>
   <div class="layout">
-    <div class="chat-panel">
+    <section class="chat-panel">
       <header class="chat-header">
-        <div>
+        <div class="brand">
           <h1>AgentForge</h1>
           <p class="subtitle">Spring Boot 对话式编程</p>
         </div>
-        <span class="status">{{ statusText }}</span>
-      <span v-if="templateStack.length" class="stack">栈: {{ templateStack.join(" + ") }}</span>
+        <div class="header-meta">
+          <span class="status">{{ statusText }}</span>
+          <span v-if="templateStack.length" class="stack">栈: {{ templateStack.join(" + ") }}</span>
+        </div>
       </header>
 
       <div ref="listRef" class="message-list">
@@ -190,7 +193,7 @@ onMounted(() => {
           </button>
         </div>
       </footer>
-    </div>
+    </section>
 
     <aside class="preview-panel">
       <h2>代码预览</h2>
@@ -208,7 +211,7 @@ onMounted(() => {
       <div v-if="selectedDomain" class="code-preview">
         <p class="file-path">{{ selectedDomain.file_path }}</p>
         <p class="summary">{{ selectedDomain.summary }}</p>
-        <pre>{{ selectedDomain.code_preview }}</pre>
+        <pre class="code-block">{{ selectedDomain.code_preview }}</pre>
       </div>
       <p v-else class="empty-preview">生成后将在此展示各域代码预览</p>
     </aside>
@@ -218,80 +221,214 @@ onMounted(() => {
 <style scoped>
 .layout {
   display: grid;
-  grid-template-columns: 1fr 360px;
-  gap: 0;
-  height: 100vh;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  width: 100%;
+  min-height: 100vh;
+  background: #0f1419;
 }
+
 .chat-panel {
   display: flex;
   flex-direction: column;
-  border-right: 1px solid #e5e7eb;
+  min-width: 0;
+  min-height: 100vh;
+  padding: 16px 20px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  background: #121821;
 }
+
+.chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-shrink: 0;
+  margin-bottom: 12px;
+}
+
+.brand h1 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.subtitle {
+  margin: 4px 0 0;
+  color: #8b98a8;
+  font-size: 0.9rem;
+}
+
+.header-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.status {
+  color: #7dd3a8;
+  font-size: 0.85rem;
+}
+
+.stack {
+  font-size: 0.75rem;
+  color: #8b98a8;
+}
+
+.message-list {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding-right: 4px;
+}
+
+.message {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.message.user {
+  background: rgba(56, 120, 255, 0.12);
+}
+
+.message.assistant {
+  background: rgba(125, 211, 168, 0.08);
+}
+
+.role {
+  font-size: 0.75rem;
+  color: #8b98a8;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.content {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92rem;
+}
+
+.empty {
+  color: #8b98a8;
+  text-align: center;
+  margin: auto 0;
+}
+
+.error {
+  color: #ff8f8f;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.hint {
+  padding: 0.5rem 0;
+  color: #7dd3a8;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex-shrink: 0;
+  margin-top: 12px;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+button.secondary {
+  background: #475569;
+}
+
 .preview-panel {
-  padding: 1rem;
-  background: #f8fafc;
+  min-height: 100vh;
+  padding: 16px;
+  background: #0b1016;
   overflow: auto;
 }
+
 .preview-panel h2 {
   margin: 0 0 0.75rem;
   font-size: 1rem;
+  color: #e8edf5;
 }
+
 .domain-tabs {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
   margin-bottom: 0.75rem;
 }
+
 .tab {
   padding: 0.25rem 0.6rem;
-  border: 1px solid #cbd5e1;
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 999px;
-  background: #fff;
+  background: transparent;
+  color: #cbd5e1;
   cursor: pointer;
   font-size: 0.8rem;
 }
+
 .tab.active {
   background: #2563eb;
   color: #fff;
   border-color: #2563eb;
 }
-.code-preview pre {
-  background: #0f172a;
+
+.code-preview .file-path {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  word-break: break-all;
+}
+
+.code-preview .summary {
+  font-size: 0.85rem;
+  color: #cbd5e1;
+  margin: 0.5rem 0;
+}
+
+.code-block {
+  background: #111827;
   color: #e2e8f0;
   padding: 0.75rem;
   border-radius: 8px;
   font-size: 0.75rem;
   overflow: auto;
-  max-height: 60vh;
+  max-height: calc(100vh - 180px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
-.file-path {
-  font-size: 0.8rem;
-  color: #475569;
-  word-break: break-all;
-}
-.summary {
-  font-size: 0.85rem;
-  color: #334155;
-}
+
 .empty-preview {
-  color: #94a3b8;
+  color: #64748b;
   font-size: 0.9rem;
 }
-.actions {
-  display: flex;
-  gap: 0.5rem;
-}
-button.secondary {
-  background: #64748b;
-}
-.hint {
-  padding: 0.5rem 1rem;
-  color: #166534;
-  background: #ecfdf5;
-  font-size: 0.85rem;
-}
-.stack {
-  font-size: 0.75rem;
-  color: #64748b;
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr auto;
+  }
+
+  .chat-panel {
+    min-height: 60vh;
+    border-right: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .preview-panel {
+    min-height: 40vh;
+  }
 }
 </style>

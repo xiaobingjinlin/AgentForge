@@ -59,19 +59,34 @@ def _route_node(state: AgentState) -> AgentState:
     router = RouterAgent(llm)
     plugin = get_framework(state.get("tech_stack", "spring-boot"))
     use_llm = not _is_dry_run(state)
-    domains, handoffs, system_prompt = router.route(
+    domains, handoffs, system_prompt, entity_resolution = router.route(
         state["user_message"],
         tech_stack=state.get("tech_stack", "spring-boot"),
         framework_version=state.get("framework_version", "4.0"),
         use_llm=use_llm,
     )
     domains = plugin.sort_domains(domains)
-    handoffs = [plugin.build_handoff(d, state["user_message"]) for d in domains]
-    logger.bind(session_id=state.get("session_id")).info("主图-路由: {}", domains)
+    handoff_map = {
+        h.payload.get("domain", h.target): h for h in handoffs
+    }
+    handoffs = [handoff_map[d] for d in domains if d in handoff_map]
+    metadata = dict(state.get("metadata") or {})
+    metadata["entity_resolution"] = {
+        "english_name": entity_resolution.english_name,
+        "source_phrase": entity_resolution.source_phrase,
+        "method": entity_resolution.method,
+        "display_label": entity_resolution.display_label,
+    }
+    logger.bind(session_id=state.get("session_id")).info(
+        "主图-路由: {} 实体={}",
+        domains,
+        entity_resolution.display_label,
+    )
     return {
         "route_domains": domains,
         "handoffs": handoffs,
         "system_prompt": system_prompt,
+        "metadata": metadata,
     }
 
 

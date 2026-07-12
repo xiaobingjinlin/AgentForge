@@ -209,6 +209,51 @@ class VectorStore:
                     cur.execute("SELECT COUNT(*) FROM rag_chunks")
                 return int(cur.fetchone()[0])
 
+    def list_recent(
+        self,
+        *,
+        domain: str,
+        limit: int = 10,
+        framework_version: str | None = None,
+    ) -> list[ChunkRecord]:
+        conditions = ["domain = %s"]
+        params: list[Any] = [domain]
+        if framework_version:
+            conditions.append("framework_version = %s")
+            params.append(framework_version)
+        params.append(limit)
+        where_clause = " AND ".join(conditions)
+
+        with self._get_pool().connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT
+                        id, doc_id, chunk_index, domain, content,
+                        framework_version, source_path, metadata
+                    FROM rag_chunks
+                    WHERE {where_clause}
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                    """,
+                    params,
+                )
+                rows = cur.fetchall()
+
+        return [
+            ChunkRecord(
+                id=row[0],
+                doc_id=row[1],
+                chunk_index=row[2],
+                domain=row[3],
+                content=row[4],
+                framework_version=row[5],
+                source_path=row[6],
+                metadata=row[7],
+            )
+            for row in rows
+        ]
+
     def delete_by_doc_id(self, doc_id: str) -> int:
         with self._get_pool().connection() as conn:
             with conn.cursor() as cur:

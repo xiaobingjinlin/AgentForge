@@ -6,10 +6,14 @@ from pathlib import Path
 
 from agentforge.core.config import PROJECT_ROOT
 from agentforge.plugins.base import HandoffPacket
+from agentforge.plugins.entity_resolver import (
+    EntityResolution,
+    entity_name_constraints,
+    resolve_entity_name,
+)
 from agentforge.plugins.spring_boot_meta import (
     DOMAIN_EXECUTION_ORDER,
     DOMAIN_KEYWORDS,
-    guess_entity_name,
     sort_domains,
 )
 
@@ -50,24 +54,30 @@ class SpringBootPlugin:
         ]
         if matched:
             return self.sort_domains(matched)
-        return ["entity", "mapper", "service", "controller"]
+        return []
 
-    def build_handoff(self, domain: str, user_message: str) -> HandoffPacket:
-        entity_name = guess_entity_name(user_message)
+    def build_handoff(
+        self,
+        domain: str,
+        user_message: str,
+        *,
+        entity_resolution: EntityResolution | None = None,
+    ) -> HandoffPacket:
+        resolution = entity_resolution or resolve_entity_name(user_message, use_llm=False)
+        entity_name = resolution.english_name
+        class_prefix = entity_name
         return HandoffPacket(
             source="router",
             target=f"{domain}-agent",
             task_summary=user_message[:500],
             relevant_files=[f"src/main/java/com/example/demo/{domain}/"],
-            constraints=[
-                f"仅关注 {domain} 层代码",
-                f"实体名使用 {entity_name}",
-                "参考上游域产出保持命名一致",
-                "不要输出与任务无关的解释",
-            ],
+            constraints=entity_name_constraints(resolution, domain),
             payload={
                 "domain": domain,
                 "entity_name": entity_name,
+                "entity_source_phrase": resolution.source_phrase,
+                "entity_name_method": resolution.method,
+                "class_prefix": class_prefix,
                 "framework_version": self.default_version,
             },
         )

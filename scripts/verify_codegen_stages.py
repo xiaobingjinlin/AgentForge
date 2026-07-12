@@ -9,6 +9,7 @@ from agentforge.agents.codegen import (
     MAX_IMPLEMENT_CHARS,
     MAX_SINGLE_TOOL_OUTPUT_CHARS,
     enforce_output_limit,
+    strip_code_fences,
 )
 from agentforge.agents.codegen.pipeline import PhasedCodegenPipeline
 from agentforge.agents.domains.spring_boot import get_domain_agent
@@ -35,6 +36,11 @@ def main() -> None:
         if not truncated or len(trimmed) > 1100:
             raise RuntimeError("输出限制未生效")
         print(f"✓ 输出限制: {MAX_SINGLE_TOOL_OUTPUT_CHARS} chars 上限")
+
+        fenced = strip_code_fences("```java\npackage demo;\npublic class A {}\n```")
+        if "```" in fenced or "package demo" not in fenced:
+            raise RuntimeError(f"代码块清洗失败: {fenced!r}")
+        print("✓ Markdown 代码块清洗")
 
         agent = get_domain_agent("service")
         pipeline = PhasedCodegenPipeline(llm=_FakeLLM())

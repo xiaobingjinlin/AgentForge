@@ -7,6 +7,7 @@ from loguru import logger
 from agentforge.api.middleware.logging import RequestLoggingMiddleware
 from agentforge.api.router import api_router
 from agentforge.core.config import get_config
+from agentforge.core.jdk import log_java_runtime
 from agentforge.core.logging import setup_logging
 from agentforge.core.pools import PoolManager
 from agentforge.db.meta_store import MetaStore
@@ -23,6 +24,7 @@ async def lifespan(app: FastAPI):
     PoolManager.init()
     MetaStore().init_schema()
     VectorStore().init_schema()
+    log_java_runtime()
     logger.info("插件、连接池与数据库 schema 就绪")
     yield
     PoolManager.close()

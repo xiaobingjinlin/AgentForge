@@ -69,6 +69,8 @@ class HealthResponse(BaseModel):
     postgres_vector: str
     postgres_meta: str
     redis: str
+    java_home: str | None = None
+    java_version: str | None = None
 
 
 class FrameworkResponse(BaseModel):

@@ -5,7 +5,7 @@ from __future__ import annotations
 from agentforge.agents.domains.base import DomainAgentSpec
 from agentforge.agents.handoff import DomainResult, handoff_to_prompt
 from agentforge.plugins.base import HandoffPacket
-from agentforge.plugins.spring_boot_meta import DOMAIN_EXECUTION_ORDER, guess_entity_name, sort_domains
+from agentforge.plugins.spring_boot_meta import DOMAIN_EXECUTION_ORDER, guess_entity_name, java_class_name, normalize_entity_name, sort_domains
 
 _BASE_PKG = "com.example.demo"
 _JAVA_ROOT = "src/main/java/com/example/demo"
@@ -47,22 +47,25 @@ class _BaseSpringDomainAgent:
         )
 
     def _entity(self, handoff: HandoffPacket) -> str:
-        return handoff.payload.get("entity_name", "User")
+        raw = handoff.payload.get("entity_name", "User")
+        return normalize_entity_name(str(raw))
+
+    def _class_name(self, handoff: HandoffPacket) -> str:
+        return java_class_name(self._entity(handoff), self.class_suffix)
 
     def target_file(self, handoff: HandoffPacket) -> str:
-        entity = self._entity(handoff)
-        class_name = f"{entity}{self.class_suffix}"
+        class_name = self._class_name(handoff)
         if self.domain == "config":
             return "src/main/resources/application-custom.yml"
         return f"{_JAVA_ROOT}/{self.domain}/{class_name}.java"
 
     def dry_run_code(self, handoff: HandoffPacket) -> str:
-        entity = self._entity(handoff)
+        class_name = self._class_name(handoff)
         if self.domain == "config":
-            return f"# [{self.domain}] custom config for {entity}\napp:\n  feature:\n    enabled: true"
+            return f"# [{self.domain}] custom config for {self._entity(handoff)}\napp:\n  feature:\n    enabled: true"
         return (
             f"package {_BASE_PKG}.{self.domain};\n\n"
-            f"public class {entity}{self.class_suffix} {{\n"
+            f"public class {class_name} {{\n"
             f"    // dry-run {self.domain}\n"
             f"}}"
         )
@@ -77,13 +80,24 @@ class _BaseSpringDomainAgent:
         base = handoff_to_prompt(handoff)
         upstream_block = _upstream_context(upstream)
         rag_block = rag_context or "（未检索知识库）"
+        entity = self._entity(handoff)
+        class_name = self._class_name(handoff)
+        source_phrase = str(handoff.payload.get("entity_source_phrase", ""))
+        naming_block = (
+            f"中文业务「{source_phrase}」已翻译为英文实体 `{entity}`，"
+            f"本文件类名必须是 `{class_name}`，禁止中文类名。\n"
+            if source_phrase and any("\u4e00" <= ch <= "\u9fff" for ch in source_phrase)
+            else f"本文件类名必须是 `{class_name}`，禁止中文类名。\n"
+        )
         return (
             f"{base}\n\n"
-            f"实体名: {self._entity(handoff)}\n"
+            f"{naming_block}"
+            f"业务实体（英文）: {entity}\n"
+            f"本层 Java 类名: {class_name}\n"
             f"目标文件: {self.target_file(handoff)}\n"
             f"上游域产出（协作上下文）:\n{upstream_block}\n"
-            f"知识库参考片段:\n{rag_block}\n"
-            f"请生成符合 Spring Boot 4.0 规范的代码，类名与包路径保持一致。"
+            f"知识库与历史错误参考:\n{rag_block}\n"
+            "请生成符合 Spring Boot 4.0 规范的代码；类名、包名必须与上述英文类名完全一致。"
         )
 
 
@@ -97,7 +111,7 @@ class EntityDomainAgent(_BaseSpringDomainAgent):
         return (
             f"你是 Spring Boot {framework_version} 实体建模专家。"
             "生成 JPA/MyBatis 实体类，含 id、核心字段、getter/setter 或 Lombok。"
-            "只输出 Java 代码。"
+            "类名必须为英文 PascalCase。只输出纯 Java 源码，禁止 Markdown 与 ``` 标记。"
         )
 
     def target_file(self, handoff: HandoffPacket) -> str:
@@ -115,7 +129,9 @@ class MapperDomainAgent(_BaseSpringDomainAgent):
         return (
             f"你是 Spring Boot {framework_version} 数据访问专家。"
             "生成 MyBatis Mapper 接口与基础 CRUD 方法，参考上游 entity 字段。"
-            "只输出 Java 代码。"
+            "方法命名统一为 findById、findAll、insert、update、deleteById。"
+            "使用 @Mapper 注解（不要用 @Repository 替代 @Mapper）。"
+            "类名必须为英文 PascalCase（如 PurchaseMapper）。只输出纯 Java 源码，禁止 Markdown 与 ``` 标记。"
         )
 
 
@@ -128,8 +144,12 @@ class ServiceDomainAgent(_BaseSpringDomainAgent):
     def system_prompt(self, framework_version: str) -> str:
         return (
             f"你是 Spring Boot {framework_version} 业务层专家。"
-            "生成 Service 接口与实现，封装业务逻辑，依赖 Mapper 层。"
-            "只输出 Java 代码。"
+            "生成 Service 接口（如 PurchaseService）与实现类（PurchaseServiceImpl），"
+            "封装业务逻辑，依赖 Mapper 层。"
+            "调用 Mapper 时必须使用上游 Mapper 接口中**已声明的方法名**"
+            "（常见为 findById、findAll、insert、update、deleteById），"
+            "禁止臆造 selectById、selectAll、delete 等未在上游出现的方法。"
+            "类名必须为英文 PascalCase。只输出纯 Java 源码，禁止 Markdown 与 ``` 标记。"
         )
 
 
@@ -143,7 +163,7 @@ class ControllerDomainAgent(_BaseSpringDomainAgent):
         return (
             f"你是 Spring Boot {framework_version} REST 专家。"
             "生成 @RestController，提供 CRUD API，调用 Service 层。"
-            "只输出 Java 代码。"
+            "类名必须为英文 PascalCase（如 PurchaseController）。只输出纯 Java 源码，禁止 Markdown 与 ``` 标记。"
         )
 
 

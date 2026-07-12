@@ -10,6 +10,7 @@ from agentforge.agents.codegen.limits import (
     MAX_SKELETON_CHARS,
     MAX_TEST_FIX_CHARS,
     enforce_output_limit,
+    strip_code_fences,
 )
 from agentforge.plugins.base import HandoffPacket
 from agentforge.sandbox.manager import SandboxManager
@@ -134,7 +135,7 @@ class PhasedCodegenPipeline:
             f"{base}\n\n"
             "【阶段 2/3：单文件实现】\n"
             f"基于以下骨架补全完整可编译代码（单文件）：\n```\n{skeleton_code}\n```\n"
-            "只输出一个文件的完整代码，不要 Markdown 解释。"
+            "只输出一个文件的完整 Java 源代码，不要使用 Markdown，不要包含 ``` 代码块标记。"
         )
         system = agent.system_prompt(framework_version) + " 当前阶段输出单文件完整实现。"
         raw = self.llm.chat(
@@ -169,7 +170,7 @@ class PhasedCodegenPipeline:
             f"【阶段 3/3：测试修复】\n"
             f"目标文件: {file_path}\n"
             f"发现问题:\n- " + "\n- ".join(issues) + "\n\n"
-            f"请修复以下代码并只输出修复后的完整单文件代码：\n```\n{code}\n```"
+            f"请修复以下代码并只输出修复后的完整单文件 Java 源代码（不要 Markdown，不要 ```）：\n{strip_code_fences(code)}"
         )
         system = agent.system_prompt(framework_version) + " 当前阶段修复编译/结构问题。"
         raw = self.llm.chat(
@@ -195,6 +196,8 @@ def _collect_issues(code: str, *, project_id: str, file_path: str) -> list[str]:
         return issues
 
     if file_path.endswith(".java"):
+        if "```" in code:
+            issues.append("包含 Markdown 代码块标记 ```")
         if code.count("{") != code.count("}"):
             issues.append("花括号不匹配")
         if "class " not in code and "interface " not in code:

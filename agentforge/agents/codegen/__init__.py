@@ -3,6 +3,7 @@ from agentforge.agents.codegen.limits import (
     MAX_SINGLE_TOOL_OUTPUT_CHARS,
     MAX_SKELETON_CHARS,
     enforce_output_limit,
+    strip_code_fences,
 )
 from agentforge.agents.codegen.pipeline import PhasedCodegenPipeline, StageResult
 
@@ -13,4 +14,5 @@ __all__ = [
     "PhasedCodegenPipeline",
     "StageResult",
     "enforce_output_limit",
+    "strip_code_fences",
 ]

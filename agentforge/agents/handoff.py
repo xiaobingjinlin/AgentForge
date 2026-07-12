@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from agentforge.plugins.base import HandoffPacket
@@ -38,6 +39,40 @@ def handoff_to_prompt(handoff: HandoffPacket) -> str:
         f"约束:\n{rules}\n"
         f"请仅完成本域代码，直接输出 Java 代码，不要多余解释。"
     )
+
+
+def build_brief_codegen_summary(
+    results: list[DomainResult],
+    *,
+    template_stack: list[str] | None = None,
+    verify: object | None = None,
+    entity_label: str | None = None,
+) -> str:
+    """代码生成完成后的简要说明（不重复贴代码）。"""
+    if not results:
+        return "未生成代码文件。"
+
+    entity = entity_label or _infer_entity_label(results)
+    lines = [f"已为 **{entity}** 生成 {len(results)} 个文件：", ""]
+    for result in results:
+        lines.append(f"- `{result.file_path}`")
+    lines.append("")
+    if template_stack:
+        lines.append(f"能力栈：`{' + '.join(template_stack)}`")
+        lines.append("")
+    if verify is not None and hasattr(verify, "summary_lines"):
+        lines.extend(verify.summary_lines())
+        lines.append("")
+    lines.append("代码可在右侧预览，或点击「一键落盘」导出。")
+    return "\n".join(lines)
+
+
+def _infer_entity_label(results: list[DomainResult]) -> str:
+    for result in results:
+        match = re.search(r"/([A-Z][A-Za-z0-9]*)(?:Mapper|Service|Controller)?\.java$", result.file_path)
+        if match:
+            return match.group(1)
+    return "业务模块"
 
 
 def build_integrate_prompt(
