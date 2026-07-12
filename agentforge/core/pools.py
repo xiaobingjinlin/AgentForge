@@ -36,7 +36,7 @@ class PoolManager:
                 conninfo=build_dsn(VECTOR_DATABASE),
                 min_size=min_size,
                 max_size=max_size,
-                configure=_configure_vector_connection,
+                configure=configure_vector_connection,
                 open=True,
             )
         if cls._meta_pool is None:
