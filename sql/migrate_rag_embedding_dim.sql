@@ -19,3 +19,6 @@ CREATE TABLE rag_chunks (
 
 CREATE INDEX IF NOT EXISTS idx_rag_chunks_domain ON rag_chunks (domain);
 CREATE INDEX IF NOT EXISTS idx_rag_chunks_framework_version ON rag_chunks (framework_version);
+
+CREATE INDEX IF NOT EXISTS idx_rag_chunks_embedding_hnsw
+    ON rag_chunks USING hnsw ((embedding::halfvec(2048)) halfvec_cosine_ops);

@@ -20,6 +20,6 @@ CREATE TABLE IF NOT EXISTS rag_chunks (
 CREATE INDEX IF NOT EXISTS idx_rag_chunks_domain ON rag_chunks (domain);
 CREATE INDEX IF NOT EXISTS idx_rag_chunks_framework_version ON rag_chunks (framework_version);
 
--- 数据量较小时可先不建 HNSW；入库后再按需创建
--- CREATE INDEX IF NOT EXISTS idx_rag_chunks_embedding_hnsw
---     ON rag_chunks USING hnsw (embedding vector_cosine_ops);
+-- 2048 维超过 vector HNSW 上限（2000），使用 halfvec 建索引
+CREATE INDEX IF NOT EXISTS idx_rag_chunks_embedding_hnsw
+    ON rag_chunks USING hnsw ((embedding::halfvec(2048)) halfvec_cosine_ops);

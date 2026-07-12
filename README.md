@@ -37,6 +37,9 @@ AgentForge/
 python -m venv .venv
 .venv/bin/pip install -e .
 
+# 首次部署：建库 + 初始化表结构（需 PostgreSQL + pgvector）
+.venv/bin/python scripts/init_databases.py
+
 # 前端依赖
 cd frontend && npm install && cd ..
 
