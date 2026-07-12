@@ -10,6 +10,7 @@ import psycopg
 from psycopg_pool import ConnectionPool
 
 from agentforge.db.connection import VECTOR_DATABASE, build_dsn
+from agentforge.db.pgvector_util import configure_vector_connection
 
 from agentforge.core.constants import EMBEDDING_DIM
 
@@ -43,19 +44,11 @@ class VectorStore:
             return PoolManager.vector_pool()
         except RuntimeError:
             if self._owned_pool is None:
-                from pgvector.psycopg import register_vector
-
-                def _configure(conn: psycopg.Connection) -> None:
-                    conn.autocommit = True
-                    register_vector(conn)
-                    with conn.cursor() as cur:
-                        cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
-
                 self._owned_pool = ConnectionPool(
                     conninfo=build_dsn(VECTOR_DATABASE),
                     min_size=1,
                     max_size=2,
-                    configure=_configure,
+                    configure=configure_vector_connection,
                     open=True,
                 )
             return self._owned_pool

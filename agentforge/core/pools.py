@@ -4,20 +4,13 @@ from __future__ import annotations
 
 import psycopg
 import redis
-from pgvector.psycopg import register_vector
 from psycopg_pool import ConnectionPool
 
 from agentforge.db.connection import META_DATABASE, VECTOR_DATABASE, build_dsn
+from agentforge.db.pgvector_util import configure_vector_connection
 
 DEFAULT_POOL_MIN = 1
 DEFAULT_POOL_MAX = 10
-
-
-def _configure_vector_conn(conn: psycopg.Connection) -> None:
-    conn.autocommit = True
-    register_vector(conn)
-    with conn.cursor() as cur:
-        cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
 
 def _configure_meta_conn(conn: psycopg.Connection) -> None:
@@ -43,7 +36,7 @@ class PoolManager:
                 conninfo=build_dsn(VECTOR_DATABASE),
                 min_size=min_size,
                 max_size=max_size,
-                configure=_configure_vector_conn,
+                configure=_configure_vector_connection,
                 open=True,
             )
         if cls._meta_pool is None:

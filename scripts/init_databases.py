@@ -34,6 +34,7 @@ from agentforge.db.connection import (  # noqa: E402
     get_user,
 )
 from agentforge.db.meta_store import MetaStore  # noqa: E402
+from agentforge.db.pgvector_util import PGVECTOR_INSTALL_HINT, ensure_vector_extension  # noqa: E402
 from agentforge.db.vector_store import VectorStore  # noqa: E402
 
 SQL_DIR = PROJECT_ROOT / "sql"
@@ -243,6 +244,14 @@ def main() -> None:
 
         # 3. 向量库表结构
         if not args.skip_vector:
+            try:
+                with _connect(VECTOR_DATABASE) as vector_conn:
+                    ensure_vector_extension(vector_conn)
+                _log("vector", f"pgvector 扩展已就绪（库 {VECTOR_DATABASE}）")
+            except RuntimeError as exc:
+                print(f"✗ {exc}")
+                raise SystemExit(1) from exc
+
             vector_store = VectorStore()
             init_vector_schema(
                 vector_store,
@@ -283,6 +292,8 @@ def main() -> None:
             print("  或：.venv/bin/python scripts/index_rag_corpus.py")
     except Exception as exc:
         print(f"✗ 初始化失败: {exc}")
+        if "vector type not found" in str(exc).lower():
+            print(PGVECTOR_INSTALL_HINT)
         raise SystemExit(1) from exc
     finally:
         if meta_store is not None:
